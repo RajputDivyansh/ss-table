@@ -8,10 +8,19 @@ import com.ss.table.writer.SSTableWriter;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 public class SSTableApplication {
     public static void main( String[] args ) throws IOException, InterruptedException {
+
+        // remove this code when project is completed
+        File file = new File("data/");
+        if (file.isDirectory()) {
+            Arrays.stream(Objects.requireNonNull(file.listFiles(
+                  (dir, name) -> name.endsWith(".data")))).forEach(File::delete);
+        }
 
 //        SSTableWriter writer = new SSTableWriter();
 //        writer.put("apple", "fruit");
@@ -62,18 +71,44 @@ public class SSTableApplication {
 //            System.out.println(key + " => " + (val == null ? "null" : val.getValue() + " (deleted: " + val.getTombstone() + ")"));
 //        }
 
-        SSTableManager manager = new SSTableManager("data/");
+        // Initialize manager with:
+        // - data directory = "data/"
+        // - maxSSTablesBeforeCompact = 10
+        // - maxTotalSizeBeforeCompactBytes = 200 bytes
+        SSTableManager manager = new SSTableManager("data/", 10, 200);
 
+        // Simulate writes across time
         for (int i = 0; i < 5; i++) {
             int index = i;
             manager.writeSSTable(dir -> {
                 SSTableWriter writer = new SSTableWriter();
-                writer.put("key" + index, "val" + index);
+
+                // Example with TTL of 3 seconds for some keys
+                long ttl = (index % 2 == 0) ? 100 : 0;
+                writer.put("key" + index, "val" + index, System.currentTimeMillis(), ttl);
+
+                // Write to a uniquely named file in the directory
                 String filePath = new File(dir, "sstable-" + System.currentTimeMillis() + ".data").getAbsolutePath();
                 writer.writeToFile(filePath);
                 return filePath;
             });
-            Thread.sleep(2000); // Simulate time between writes
+
+            Thread.sleep(2000); // Simulate staggered writes
+        }
+
+        // Wait to allow background compaction and TTL expiry
+        Thread.sleep(12000);
+
+        // Shutdown background compactor thread
+        manager.shutdown();
+
+        System.out.println("✅ SSTable writes and background compaction completed.");
+        System.out.println("Below are the available content of SSTable: ");
+        SSTableReader finalReader =
+              new SSTableReader(new File("data/").listFiles()[0].getAbsolutePath());
+        for (String key : finalReader.getAllKeys()) {
+            SSTableValueModel val = finalReader.get(key);
+            System.out.println(key + " => " + val);
         }
     }
 }

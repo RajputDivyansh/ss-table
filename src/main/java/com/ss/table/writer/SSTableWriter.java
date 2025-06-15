@@ -23,12 +23,17 @@ public class SSTableWriter {
     }
 
     public void put(String key, String value, long timeStamp) {
-        memtable.put(key, new SSTableValueModel(value, timeStamp, false));
+        put(key, value, timeStamp, -1);
+        bloomFilter.add(key);
+    }
+
+    public void put(String key, String value, long timeStamp, long ttlMillis) {
+        memtable.put(key, new SSTableValueModel(value, timeStamp, false, ttlMillis));
         bloomFilter.add(key);
     }
 
     public void delete(String key, long timestamp) {
-        memtable.put(key, new SSTableValueModel("", timestamp, true));
+        memtable.put(key, new SSTableValueModel("", timestamp, true, -1));
         bloomFilter.add(key);
     }
 
@@ -43,6 +48,7 @@ public class SSTableWriter {
                 byte[] valBytes = entry.getValue().getValue().getBytes();
                 long timestamp = entry.getValue().getTimestamp();
                 boolean isTombstone = entry.getValue().getTombstone();
+                long ttlMillis = entry.getValue().getTtlMillis();
 
                 index.put(entry.getKey(), dataBlock.size());
 
@@ -52,6 +58,7 @@ public class SSTableWriter {
                 dataBlock.write(valBytes);
                 dataBlock.write(ByteBuffer.allocate(8).putLong(timestamp).array());
                 dataBlock.write((byte) (isTombstone ? 1 : 0));
+                dataBlock.write(ByteBuffer.allocate(8).putLong(ttlMillis).array());
             }
 
             long dataStart = channel.position();
