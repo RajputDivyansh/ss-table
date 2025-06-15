@@ -1,6 +1,7 @@
 package com.ss.table.writer;
 
 import com.ss.table.filter.BloomFilter;
+import com.ss.table.model.SSTableValueModel;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -13,11 +14,21 @@ import java.util.TreeMap;
 
 public class SSTableWriter {
 
-    private final TreeMap<String, String> memtable = new TreeMap<>();
+    private final TreeMap<String, SSTableValueModel> memtable = new TreeMap<>();
     private final BloomFilter bloomFilter = new BloomFilter(1024);
 
     public void put(String key, String value) {
-        memtable.put(key, value);
+        put(key, value, System.currentTimeMillis());
+        bloomFilter.add(key);
+    }
+
+    public void put(String key, String value, long timeStamp) {
+        memtable.put(key, new SSTableValueModel(value, timeStamp, false));
+        bloomFilter.add(key);
+    }
+
+    public void delete(String key, long timestamp) {
+        memtable.put(key, new SSTableValueModel("", timestamp, true));
         bloomFilter.add(key);
     }
 
@@ -27,9 +38,11 @@ public class SSTableWriter {
             Map<String, Integer> index = new LinkedHashMap<>();
             ByteArrayOutputStream dataBlock = new ByteArrayOutputStream();
 
-            for (Map.Entry<String, String> entry : memtable.entrySet()) {
+            for (Map.Entry<String, SSTableValueModel> entry : memtable.entrySet()) {
                 byte[] keyBytes = entry.getKey().getBytes();
-                byte[] valBytes = entry.getValue().getBytes();
+                byte[] valBytes = entry.getValue().getValue().getBytes();
+                long timestamp = entry.getValue().getTimestamp();
+                boolean isTombstone = entry.getValue().getTombstone();
 
                 index.put(entry.getKey(), dataBlock.size());
 
@@ -37,6 +50,8 @@ public class SSTableWriter {
                 dataBlock.write(keyBytes);
                 dataBlock.write(ByteBuffer.allocate(4).putInt(valBytes.length).array());
                 dataBlock.write(valBytes);
+                dataBlock.write(ByteBuffer.allocate(8).putLong(timestamp).array());
+                dataBlock.write((byte) (isTombstone ? 1 : 0));
             }
 
             long dataStart = channel.position();

@@ -1,6 +1,7 @@
 package com.ss.table.reader;
 
 import com.ss.table.filter.BloomFilter;
+import com.ss.table.model.SSTableValueModel;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -8,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 public class SSTableReader {
     private final Map<String, Integer> index = new HashMap<>();
@@ -54,12 +56,15 @@ public class SSTableReader {
         }
     }
 
-    public String get(String key) throws IOException {
+    public Set<String> getAllKeys() {
+        return index.keySet();
+    }
+
+    public SSTableValueModel get(String key) throws IOException {
         if (!bloomFilter.mightContain(key)) return null;
         Integer offset = index.get(key);
         if (offset == null) return null;
 
-        // finding key len and key
         channel.position(offset);
         ByteBuffer keyLenBuf = ByteBuffer.allocate(4);
         channel.read(keyLenBuf);
@@ -70,9 +75,8 @@ public class SSTableReader {
         channel.read(keyBuf);
         keyBuf.flip();
         String foundKey = new String(keyBuf.array());
-//        if (!foundKey.equals(key)) return null;
+        if (!foundKey.equals(key)) return null;
 
-        // finding value len and value
         ByteBuffer valLenBuf = ByteBuffer.allocate(4);
         channel.read(valLenBuf);
         valLenBuf.flip();
@@ -81,6 +85,18 @@ public class SSTableReader {
         ByteBuffer valBuf = ByteBuffer.allocate(valLen);
         channel.read(valBuf);
         valBuf.flip();
-        return new String(valBuf.array());
+        String value = new String(valBuf.array());
+
+        ByteBuffer timestampBuf = ByteBuffer.allocate(8);
+        channel.read(timestampBuf);
+        timestampBuf.flip();
+        long timestamp = timestampBuf.getLong();
+
+        ByteBuffer tombstoneBuf = ByteBuffer.allocate(1);
+        channel.read(tombstoneBuf);
+        tombstoneBuf.flip();
+        boolean isTombstone = tombstoneBuf.get() == 1;
+
+        return new SSTableValueModel(value, timestamp, isTombstone);
     }
 }
