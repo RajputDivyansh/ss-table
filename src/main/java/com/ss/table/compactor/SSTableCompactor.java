@@ -12,17 +12,22 @@ import java.util.TreeMap;
 
 public class SSTableCompactor {
 
-//    long gcGraceMillis = 10 * 24 * 60 * 60 * 1000; // 10 days
-    long gcGraceMillis = 10; // 10 millisecond
-
-    public void compact(List<String> inputPaths, String outputPath) throws IOException {
+    public void compact(List<String> inputPaths, String outputPath, long gcGraceMillis)
+          throws IOException {
         Map<String, SSTableValueModel> mergedData = getMergedSSTableValueModelMap(inputPaths);
 
         SSTableWriter writer = new SSTableWriter();
         for (Map.Entry<String, SSTableValueModel> entry : mergedData.entrySet()) {
             SSTableValueModel value = entry.getValue();
+
+            if (value.getTtlMillis() > 0
+                  && (System.currentTimeMillis() - value.getTimestamp()) > value.getTtlMillis()) {
+                System.out.println("⏱️ TTL expired -> purging key: " + entry.getKey());
+                continue;
+            }
+
             if (value.getTombstone()) {
-                if (System.currentTimeMillis() - value.getTimestamp() > gcGraceMillis) {
+                if ((System.currentTimeMillis() - value.getTimestamp()) > gcGraceMillis) {
                     continue;
                 }
                 writer.delete(entry.getKey(), value.getTimestamp());

@@ -8,6 +8,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -56,16 +57,13 @@ public class SSTableReader {
         }
     }
 
-    public Set<String> getAllKeys() {
-        return index.keySet();
-    }
-
     public SSTableValueModel get(String key) throws IOException {
         if (!bloomFilter.mightContain(key)) return null;
         Integer offset = index.get(key);
         if (offset == null) return null;
 
         channel.position(offset);
+
         ByteBuffer keyLenBuf = ByteBuffer.allocate(4);
         channel.read(keyLenBuf);
         keyLenBuf.flip();
@@ -97,6 +95,15 @@ public class SSTableReader {
         tombstoneBuf.flip();
         boolean isTombstone = tombstoneBuf.get() == 1;
 
-        return new SSTableValueModel(value, timestamp, isTombstone);
+        ByteBuffer ttlBuf = ByteBuffer.allocate(8);
+        channel.read(ttlBuf);
+        ttlBuf.flip();
+        long ttlMillis = ttlBuf.getLong();
+
+        return new SSTableValueModel(value, timestamp, isTombstone, ttlMillis);
+    }
+
+    public Set<String> getAllKeys() {
+        return new HashSet<>(index.keySet());
     }
 }
