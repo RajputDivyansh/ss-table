@@ -55,6 +55,7 @@ public class SSTableCompactor {
                 }
             }
         }
+        System.out.println("Data Merged for input paths: {}" + inputPaths);
         return mergedData;
     }
 }
