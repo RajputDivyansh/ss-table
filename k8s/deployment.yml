@@ -1,20 +1,39 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: ss-table
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ss-table
+  ttlSecondsAfterFinished: 120   # 👈 AUTO CLEANUP AFTER 2 MINUTES
+  backoffLimit: 3
+  
   template:
     metadata:
       labels:
         app: ss-table
     spec:
+      restartPolicy: Never
       containers:
       - name: ss-table
-        image: divyansh/ss-table:latest    # 👈 LOCAL IMAGE (important)
-        imagePullPolicy: Never   # 👈 forces local image usage
-        ports:
-        - containerPort: 8080
+        image: divyansh/ss-table:latest
+
+# this is for deployment type application (spring boot - tomcat application)
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: ss-table
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: ss-table
+#  template:
+#    metadata:
+#      labels:
+#        app: ss-table
+#    spec:
+#      containers:
+#      - name: ss-table
+#        image: divyansh/ss-table:latest    # 👈 LOCAL IMAGE (important)
+#        imagePullPolicy: Never   # 👈 forces local image usage
+#        ports:
+#        - containerPort: 8080
