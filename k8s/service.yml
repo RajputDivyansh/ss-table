@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ss-table-service
+spec:
+  selector:
+    app: ss-table
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: NodePort
