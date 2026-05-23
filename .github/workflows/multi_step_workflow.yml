@@ -1,4 +1,4 @@
-name: Enterprise CI/CD Pipeline
+name: Multi Step CI/CD Pipeline
 
 on:
   push:
