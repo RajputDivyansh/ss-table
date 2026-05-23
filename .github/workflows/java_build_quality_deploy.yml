@@ -1,4 +1,4 @@
-name: Enterprise CI/CD Pipeline
+name: Build Deploy CI/CD Pipeline
 
 on:
   push:
