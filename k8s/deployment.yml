@@ -15,7 +15,8 @@ spec:
       containers:
       - name: ss-table
         image: divyansh/ss-table:latest
-
+        imagePullPolicy: Never   # 👈 FORCE LOCAL IMAGE ONLY
+        
 # this is for deployment type application (spring boot - tomcat application)
 #apiVersion: apps/v1
 #kind: Deployment
