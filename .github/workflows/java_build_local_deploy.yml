@@ -1,0 +1,117 @@
+name: Build Deploy CI/CD Pipeline without docker hub
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ss-table
+  DOCKER_REGISTRY: divyansh
+  SONAR_HOST: http://56.228.3.40:9000
+
+jobs:
+
+  # ---------------- BUILD ONCE ----------------
+  build:
+    name: Build + Test + Package
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 23
+
+    - name: Build + Test + Package (ONCE)
+      run: mvn clean verify package
+
+    - name: Upload JAR Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-jar
+        path: target/*.jar
+
+    - name: Upload Build Classes (for Sonar)
+      uses: actions/upload-artifact@v4
+      with:
+        name: classes
+        path: target/classes
+
+
+  # ---------------- SONAR (NO REBUILD) ----------------
+  sonar:
+    name: SonarQube Analysis
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Download Classes
+      uses: actions/download-artifact@v4
+      with:
+        name: classes
+        path: target/classes
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 23
+
+    - name: Run Sonar Scan
+      run: |
+        mvn sonar:sonar \
+          -Dsonar.projectKey=ss-table \
+          -Dsonar.host.url=$SONAR_HOST \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+          -Dsonar.java.binaries=target/classes
+
+
+  # ---------------- DOCKER BUILD ----------------
+  docker-build:
+    name: Build Docker Image
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Download JAR
+      uses: actions/download-artifact@v4
+      with:
+        name: app-jar
+        path: target
+
+    - name: Build Docker Image
+      run: |
+        docker build -t $DOCKER_REGISTRY/$IMAGE_NAME:latest .
+
+  # ---------------- DEPLOY ----------------
+  deploy:
+    name: Deploy to Kubernetes
+    needs: build
+    runs-on: self-hosted
+  
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      # EC2 host Docker daemon and Minikube container runtime may be different.
+      # docker build does NOT always make image visible inside Kubernetes automatically.
+      # minikube image load fixes that.
+      - name: Load Image into Minikube
+        run: |
+          minikube image load divyansh/ss-table:latest
+  
+      - name: Deploy App
+        run: |
+          kubectl apply -f k8s/
+          kubectl rollout status deployment/ss-table
