@@ -1,4 +1,4 @@
-name: Build Deploy CI/CD Pipeline without docker hub
+name: Build Deploy CI/CD Pipeline without docker-hub
 
 on:
   push:
