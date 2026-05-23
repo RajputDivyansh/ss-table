@@ -77,7 +77,7 @@ jobs:
   # ---------------- DOCKER BUILD ----------------
   docker-build:
     name: Build Docker Image
-    needs: build
+    needs: sonar
     runs-on: self-hosted
 
     steps:
