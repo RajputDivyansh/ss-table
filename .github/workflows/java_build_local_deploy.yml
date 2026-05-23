@@ -103,6 +103,13 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # ---------------- CLEAN OLD JOB ----------------
+      - name: Clean Up Old Job
+        run: |
+          echo "Deleting previous job if exists..."
+          kubectl delete job ss-table --ignore-not-found=true
+
         
       # EC2 host Docker daemon and Minikube container runtime may be different.
       # docker build does NOT always make image visible inside Kubernetes automatically.
@@ -111,7 +118,40 @@ jobs:
         run: |
           minikube image load divyansh/ss-table:latest
   
-      - name: Deploy App
+      # Apply Kubernetes manifests
+      - name: Deploy Job
         run: |
           kubectl apply -f k8s/
-          kubectl rollout status deployment/ss-table
+          kubectl get jobs
+          kubectl get pods
+  
+      # Wait for completion
+      - name: Wait for Job Completion
+        run: |
+          kubectl wait --for=condition=complete job/ss-table --timeout=300s
+  
+      # Show logs on success
+      - name: Show Job Logs
+        if: success()
+        run: |
+          echo "=== JOB LOGS ==="
+          kubectl logs job/ss-table
+  
+      # ---------------- FAILURE DEBUGGING ----------------
+      - name: Debug on Failure (Jobs)
+        if: failure()
+        run: |
+          echo "=== JOB STATUS ==="
+          kubectl get jobs
+  
+          echo "=== PODS ==="
+          kubectl get pods -o wide
+  
+          echo "=== DESCRIBE JOB ==="
+          kubectl describe job ss-table || true
+  
+          echo "=== DESCRIBE PODS ==="
+          kubectl describe pods -l job-name=ss-table || true
+  
+          echo "=== POD LOGS ==="
+          kubectl logs -l job-name=ss-table || true
