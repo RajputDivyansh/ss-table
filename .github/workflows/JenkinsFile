@@ -1,0 +1,26 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'dynamic-agent'
+
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: maven
+    image: maven:3.9.6-eclipse-temurin-21
+'''
+        }
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean package'
+                }
+            }
+        }
+    }
+}
