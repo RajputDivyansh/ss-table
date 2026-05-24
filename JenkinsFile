@@ -7,49 +7,20 @@ kind: Pod
 spec:
   containers:
   - name: maven
-    image: eclipse-temurin:23-jdk
+    image: maven:3.9.9-eclipse-temurin-23
     command: ["cat"]
     tty: true
 '''
         }
     }
 
-    environment {
-        MAVEN_OPTS = "-Xmx1024m"
-    }
-
     stages {
-
-        stage('Check Java Version') {
-            steps {
-                container('maven') {
-                    sh 'java -version'
-                }
-            }
-        }
-
         stage('Build') {
             steps {
                 container('maven') {
-                    sh '''
-                        apt-get update
-                        apt-get install -y maven
-
-                        mvn -version
-                        mvn clean package
-                    '''
+                    sh 'mvn clean package'
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            echo "Build successful 🚀"
-        }
-
-        failure {
-            echo "Build failed ❌"
         }
     }
 }
