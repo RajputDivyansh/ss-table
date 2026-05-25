@@ -9,6 +9,8 @@ pipeline {
         // 1. Manually specify your local Java 23 paths here to prevent tool lookup bugs
         JAVA_HOME = "/usr/lib/jvm/temurin-23-jdk-amd64"
         PATH = "/usr/lib/jvm/temurin-23-jdk-amd64/bin:${env.PATH}"
+
+        KUBE_CRED_ID = "KUBERNETES_SECRET"
     }
 
     stages {
@@ -57,45 +59,55 @@ pipeline {
         // ---------------- CLEAN OLD JOB ----------------
         stage('Clean Old Kubernetes Job') {
             steps {
-                sh """
-                    echo "Deleting previous job if exists..."
-                    kubectl delete job ss-table --ignore-not-found=true
-                """
+                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+                    sh """
+                        echo "Deleting previous job if exists..."
+                        kubectl delete job ss-table --ignore-not-found=true
+                    """
+                }
             }
         }
 
         // ---------------- LOAD IMAGE ----------------
         stage('Load Image into Minikube') {
             steps {
-                sh "minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+                    sh "minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                }
             }
         }
 
         // ---------------- DEPLOY ----------------
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                    kubectl apply -f k8s/
-                    kubectl get jobs
-                    kubectl get pods
-                """
+                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+                    sh """
+                        kubectl apply -f k8s/
+                        kubectl get jobs
+                        kubectl get pods
+                    """
+                }
             }
         }
 
         // ---------------- WAIT FOR JOB ----------------
         stage('Wait for Job Completion') {
             steps {
-                sh "kubectl wait --for=condition=complete job/ss-table --timeout=300s"
+                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+                    sh "kubectl wait --for=condition=complete job/ss-table --timeout=300s"
+                }
             }
         }
 
         // ---------------- SHOW LOGS ----------------
         stage('Show Job Logs') {
             steps {
-                sh """
-                    echo "=== JOB LOGS ==="
-                    kubectl logs job/ss-table
-                """
+                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+                    sh """
+                        echo "=== JOB LOGS ==="
+                        kubectl logs job/ss-table
+                    """
+                }
             }
         }
     }
@@ -103,22 +115,24 @@ pipeline {
     // ---------------- FAILURE DEBUGGING ----------------
     post {
         failure {
-            sh """
-                echo "=== JOB STATUS ==="
-                kubectl get jobs || true
-
-                echo "=== PODS ==="
-                kubectl get pods -o wide || true
-
-                echo "=== DESCRIBE JOB ==="
-                kubectl describe job ss-table || true
-
-                echo "=== DESCRIBE PODS ==="
-                kubectl describe pods -l job-name=ss-table || true
-
-                echo "=== POD LOGS ==="
-                kubectl logs -l job-name=ss-table || true
-            """
+            withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+                sh """
+                    echo "=== JOB STATUS ==="
+                    kubectl get jobs || true
+    
+                    echo "=== PODS ==="
+                    kubectl get pods -o wide || true
+    
+                    echo "=== DESCRIBE JOB ==="
+                    kubectl describe job ss-table || true
+    
+                    echo "=== DESCRIBE PODS ==="
+                    kubectl describe pods -l job-name=ss-table || true
+    
+                    echo "=== POD LOGS ==="
+                    kubectl logs -l job-name=ss-table || true
+                """
+            }
         }
     }
 }
