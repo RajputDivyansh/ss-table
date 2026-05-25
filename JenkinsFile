@@ -6,11 +6,12 @@ pipeline {
         DOCKER_REGISTRY = "divyansh"
         SONAR_HOST = "http://51.20.138.150:9000"
         
-        // 1. Manually specify your local Java 23 paths here to prevent tool lookup bugs
+        // Java configurations
         JAVA_HOME = "/usr/lib/jvm/temurin-23-jdk-amd64"
         PATH = "/usr/lib/jvm/temurin-23-jdk-amd64/bin:${env.PATH}"
-
-        KUBE_CRED_ID = "KUBERNETES_SECRET"
+        
+        // Change this to match the EXACT Credentials ID you see in Jenkins UI
+        KUBE_CRED_ID = "KUBERNETES_SECRET" 
     }
 
     stages {
@@ -18,11 +19,9 @@ pipeline {
         // ---------------- BUILD ----------------
         stage('Build + Test + Package') {
             steps {
-                // Verified your local Java installation path is tracked correctly
                 sh 'java -version'
                 sh 'mvn clean verify package'
             }
-
             post {
                 success {
                     archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
@@ -56,56 +55,29 @@ pipeline {
             }
         }
 
-        // ---------------- CLEAN OLD JOB ----------------
-        stage('Clean Old Kubernetes Job') {
+        // ---------------- KUBERNETES DEPLOYMENT SEQUENCE ----------------
+        // We use withCredentials to safely inject the kube/config file context dynamically
+        stage('Kubernetes Operations') {
             steps {
                 withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
                     sh """
+                        echo "=== Verified Cluster Connection ==="
+                        kubectl cluster-info
+
                         echo "Deleting previous job if exists..."
                         kubectl delete job ss-table --ignore-not-found=true
-                    """
-                }
-            }
-        }
 
-        // ---------------- LOAD IMAGE ----------------
-        stage('Load Image into Minikube') {
-            steps {
-                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
-                    // FORCE minikube to look at the ubuntu user's profile state
-                    sh "sudo -u ubuntu minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
-                    // sh "minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
-                }
-            }
-        }
+                        echo "Loading Image into Minikube..."
+                        minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest || echo "Continuing..."
 
-        // ---------------- DEPLOY ----------------
-        stage('Deploy to Kubernetes') {
-            steps {
-                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
-                    sh """
+                        echo "Deploying to Kubernetes..."
                         kubectl apply -f k8s/
                         kubectl get jobs
                         kubectl get pods
-                    """
-                }
-            }
-        }
 
-        // ---------------- WAIT FOR JOB ----------------
-        stage('Wait for Job Completion') {
-            steps {
-                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
-                    sh "kubectl wait --for=condition=complete job/ss-table --timeout=300s"
-                }
-            }
-        }
+                        echo "Waiting for Job Completion..."
+                        kubectl wait --for=condition=complete job/ss-table --timeout=300s
 
-        // ---------------- SHOW LOGS ----------------
-        stage('Show Job Logs') {
-            steps {
-                withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
-                    sh """
                         echo "=== JOB LOGS ==="
                         kubectl logs job/ss-table
                     """
@@ -117,20 +89,21 @@ pipeline {
     // ---------------- FAILURE DEBUGGING ----------------
     post {
         failure {
+            // We use the same credential here so the debugging commands can also talk to the cluster
             withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
                 sh """
                     echo "=== JOB STATUS ==="
                     kubectl get jobs || true
-    
+
                     echo "=== PODS ==="
                     kubectl get pods -o wide || true
-    
+
                     echo "=== DESCRIBE JOB ==="
                     kubectl describe job ss-table || true
-    
+
                     echo "=== DESCRIBE PODS ==="
                     kubectl describe pods -l job-name=ss-table || true
-    
+
                     echo "=== POD LOGS ==="
                     kubectl logs -l job-name=ss-table || true
                 """
