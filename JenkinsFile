@@ -72,9 +72,9 @@ pipeline {
         stage('Load Image into Minikube') {
             steps {
                 withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
-                    # FORCE minikube to look at the ubuntu user's profile state
+                    // FORCE minikube to look at the ubuntu user's profile state
                     sh "sudo -u ubuntu minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
-                    # sh "minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                    // sh "minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
             }
         }
