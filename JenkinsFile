@@ -1,49 +1,141 @@
 pipeline {
-    agent {
-        kubernetes {
-            yaml '''
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: maven
-    image: maven:3.9.9-eclipse-temurin-23
-    command: ["cat"]
-    tty: true
-'''
-        }
-    }
+    agent any
 
     environment {
-        MAVEN_OPTS = "-Xmx1024m"
+        IMAGE_NAME = "ss-table"
+        DOCKER_REGISTRY = "divyansh"
+        SONAR_HOST = "http://51.20.138.150:9000"
     }
 
     stages {
-        stage('Check Versions') {
+
+        // ---------------- SETUP JAVA ----------------
+        stage('Setup Java') {
             steps {
-                container('maven') {
-                    sh 'java -version'
-                    sh 'mvn -version'
+                script {
+                    env.JAVA_HOME = tool name: 'JDK23', type: 'jdk'
+                    env.PATH = "${env.JAVA_HOME}/bin:${env.PATH}"
                 }
             }
         }
 
-        stage('Build') {
+        // ---------------- BUILD ----------------
+        stage('Build + Test + Package') {
             steps {
-                container('maven') {
-                    // No apt-get update needed anymore!
-                    sh 'mvn clean package'
+                sh 'mvn clean verify package'
+            }
+
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                    stash name: 'classes', includes: 'target/classes/**'
+                    stash name: 'jar', includes: 'target/*.jar'
                 }
+            }
+        }
+
+        // ---------------- SONAR ----------------
+        stage('SonarQube Analysis') {
+            steps {
+
+                unstash 'classes'
+
+                withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
+
+                    sh """
+                        mvn sonar:sonar \
+                        -Dsonar.projectKey=ss-table \
+                        -Dsonar.host.url=${SONAR_HOST} \
+                        -Dsonar.login=${SONAR_TOKEN} \
+                        -Dsonar.java.binaries=target/classes
+                    """
+                }
+            }
+        }
+
+        // ---------------- DOCKER BUILD ----------------
+        stage('Docker Build') {
+            steps {
+
+                unstash 'jar'
+
+                sh """
+                    docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest .
+                """
+            }
+        }
+
+        // ---------------- CLEAN OLD JOB ----------------
+        stage('Clean Old Kubernetes Job') {
+            steps {
+                sh """
+                    echo "Deleting previous job if exists..."
+                    kubectl delete job ss-table --ignore-not-found=true
+                """
+            }
+        }
+
+        // ---------------- LOAD IMAGE ----------------
+        stage('Load Image into Minikube') {
+            steps {
+                sh """
+                    minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                """
+            }
+        }
+
+        // ---------------- DEPLOY ----------------
+        stage('Deploy to Kubernetes') {
+            steps {
+
+                sh """
+                    kubectl apply -f k8s/
+                    kubectl get jobs
+                    kubectl get pods
+                """
+            }
+        }
+
+        // ---------------- WAIT FOR JOB ----------------
+        stage('Wait for Job Completion') {
+            steps {
+                sh """
+                    kubectl wait --for=condition=complete job/ss-table --timeout=300s
+                """
+            }
+        }
+
+        // ---------------- SHOW LOGS ----------------
+        stage('Show Job Logs') {
+            steps {
+                sh """
+                    echo "=== JOB LOGS ==="
+                    kubectl logs job/ss-table
+                """
             }
         }
     }
 
+    // ---------------- FAILURE DEBUGGING ----------------
     post {
-        success {
-            echo "Build successful 🚀"
-        }
         failure {
-            echo "Build failed ❌"
+
+            sh """
+                echo "=== JOB STATUS ==="
+                kubectl get jobs
+
+                echo "=== PODS ==="
+                kubectl get pods -o wide
+
+                echo "=== DESCRIBE JOB ==="
+                kubectl describe job ss-table || true
+
+                echo "=== DESCRIBE PODS ==="
+                kubectl describe pods -l job-name=ss-table || true
+
+                echo "=== POD LOGS ==="
+                kubectl logs -l job-name=ss-table || true
+            """
         }
     }
 }
