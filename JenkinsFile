@@ -68,7 +68,7 @@ pipeline {
                         kubectl delete job ss-table --ignore-not-found=true
 
                         echo "Loading Image into Minikube..."
-                        minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest || echo "Continuing..."
+                        MINIKUBE_HOME=/home/ubuntu minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
 
                         echo "Deploying to Kubernetes..."
                         kubectl apply -f k8s/
