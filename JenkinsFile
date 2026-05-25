@@ -56,6 +56,8 @@ pipeline {
         //}
 
         // ---------------- KUBERNETES DEPLOYMENT SEQUENCE ----------------
+        // it has some of docker image in minikube if i deleted it from minikube docker env....its not able to pull imaage back to minikube again
+
         // We use withCredentials to safely inject the kube/config file context dynamically
         //stage('Kubernetes Operations') {
         //    steps {
@@ -86,6 +88,7 @@ pipeline {
         //}
 
         // ---------------- KUBERNETES DEPLOYMENT SEQUENCE ----------------
+        // it has some issue of image pull with building docker file inside minikube docker env.
         stage('Build + Kubernetes Operations') {
             steps {
                 withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
