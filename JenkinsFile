@@ -48,16 +48,45 @@ pipeline {
         }
 
         // ---------------- DOCKER BUILD ----------------
-        stage('Docker Build') {
-            steps {
-                unstash 'jar'
-                sh "docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest ."
-            }
-        }
+        // stage('Docker Build') {
+        //   steps {
+        //        unstash 'jar'
+        //        sh "docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest ."
+        //    }
+        //}
 
         // ---------------- KUBERNETES DEPLOYMENT SEQUENCE ----------------
         // We use withCredentials to safely inject the kube/config file context dynamically
-        stage('Kubernetes Operations') {
+        //stage('Kubernetes Operations') {
+        //    steps {
+        //        withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
+        //            sh """
+        //                echo "=== Verified Cluster Connection ==="
+        //                kubectl cluster-info
+
+        //                echo "Deleting previous job if exists..."
+        //                kubectl delete job ss-table --ignore-not-found=true
+
+        //                echo "Loading Image into Minikube..."
+        //                MINIKUBE_HOME=/home/ubuntu minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+
+        //                echo "Deploying to Kubernetes..."
+        //                kubectl apply -f k8s/
+        //                kubectl get jobs
+        //                kubectl get pods
+
+        //                echo "Waiting for Job Completion..."
+        //                kubectl wait --for=condition=complete job/ss-table --timeout=300s
+
+        //                echo "=== JOB LOGS ==="
+        //                kubectl logs job/ss-table
+        //            """
+        //        }
+        //    }
+        //}
+
+        // ---------------- KUBERNETES DEPLOYMENT SEQUENCE ----------------
+        stage('Build + Kubernetes Operations') {
             steps {
                 withCredentials([file(credentialsId: "${KUBE_CRED_ID}", variable: 'KUBECONFIG')]) {
                     sh """
@@ -67,8 +96,11 @@ pipeline {
                         echo "Deleting previous job if exists..."
                         kubectl delete job ss-table --ignore-not-found=true
 
-                        echo "Loading Image into Minikube..."
-                        MINIKUBE_HOME=/home/ubuntu minikube image load ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                        echo "=== Pointing Docker to Minikube Daemon ==="
+                        eval \$(MINIKUBE_HOME=/home/ubuntu minikube docker-env)
+
+                        echo "Forcefully building image inside the Cluster..."
+                        docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest .
 
                         echo "Deploying to Kubernetes..."
                         kubectl apply -f k8s/
